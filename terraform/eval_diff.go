@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl2/hcl"
+	"github.com/kr/pretty"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/hashicorp/terraform/addrs"
@@ -107,6 +108,7 @@ type EvalDiff struct {
 
 // TODO: test
 func (n *EvalDiff) Eval(ctx EvalContext) (interface{}, error) {
+	log.Println("[DEBUG] Executing *EvalDiff.Eval")
 	state := *n.State
 	config := *n.Config
 	provider := *n.Provider
@@ -125,9 +127,16 @@ func (n *EvalDiff) Eval(ctx EvalContext) (interface{}, error) {
 		return nil, fmt.Errorf("provider does not support resource type %q", n.Addr.Resource.Type)
 	}
 	keyData := EvalDataForInstanceKey(n.Addr.Key)
+	log.Printf("[DEBUG] Calling ctx EvaluateBlock:")
+	// log.Printf("[DEBUG] context: %s", pretty.Sprint(ctx))
+	// log.Printf("[DEBUG] Config: %s", pretty.Sprint(config.Config))
+	// log.Printf("[DEBUG] schema: %s", pretty.Sprint(schema))
+	// log.Printf("[DEBUG] keyData: %s", pretty.Sprint(keyData))
+
 	configVal, _, configDiags := ctx.EvaluateBlock(config.Config, schema, nil, keyData)
 	diags = diags.Append(configDiags)
 	if configDiags.HasErrors() {
+		log.Println("[DEBUG] Returning config diag errors")
 		return nil, diags.Err()
 	}
 
@@ -152,7 +161,11 @@ func (n *EvalDiff) Eval(ctx EvalContext) (interface{}, error) {
 		priorVal = cty.NullVal(schema.ImpliedType())
 	}
 
+	log.Printf("[DEBUG] EvalDiff.Eval calling objchange.ProposedNewObject, priorVal: %s", pretty.Sprint(priorVal))
+	log.Printf("[DEBUG] schema: %s", pretty.Sprint(schema))
+	log.Printf("[DEBUG] configVal: %s", pretty.Sprint(configVal))
 	proposedNewVal := objchange.ProposedNewObject(schema, priorVal, configVal)
+	log.Printf("[DEBUG] proposedNewVal: %s", pretty.Sprint(proposedNewVal))
 
 	// Call pre-diff hook
 	if !n.Stub {

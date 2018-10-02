@@ -525,6 +525,7 @@ func (c *Context) Plan() (*plans.Plan, tfdiags.Diagnostics) {
 	diags = diags.Append(walker.NonFatalDiagnostics)
 	diags = diags.Append(walkDiags)
 	if walkDiags.HasErrors() {
+		log.Println("[DEBUG] walk errors")
 		return nil, diags
 	}
 	p.Changes = c.changes

@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform/plans"
 	"github.com/hashicorp/terraform/states"
 	"github.com/hashicorp/terraform/tfdiags"
+	"github.com/kr/pretty"
 )
 
 // Evaluator provides the necessary contextual data for evaluating expressions
@@ -426,6 +427,8 @@ func (d *evaluationStateData) GetPathAttr(addr addrs.PathAttr, rng tfdiags.Sourc
 }
 
 func (d *evaluationStateData) GetResourceInstance(addr addrs.ResourceInstance, rng tfdiags.SourceRange) (cty.Value, tfdiags.Diagnostics) {
+	log.Printf("[DEBUG] Calling GetResourceInstance:")
+	log.Printf("[DEBUG] d: %s", pretty.Sprint(d))
 	var diags tfdiags.Diagnostics
 
 	// Although we are giving a ResourceInstance address here, if it has
@@ -451,13 +454,18 @@ func (d *evaluationStateData) GetResourceInstance(addr addrs.ResourceInstance, r
 			Detail:   fmt.Sprintf(`A resource %q %q has not been declared in %s`, addr.Resource.Type, addr.Resource.Name, moduleAddr),
 			Subject:  rng.ToHCL().Ptr(),
 		})
+		log.Println("[DEBUG] Returning dynamic val due to empty config")
 		return cty.DynamicVal, diags
 	}
 
 	// First we'll find the state for the resource as a whole, and decide
 	// from there whether we're going to interpret the given address as a
 	// resource or a resource instance address.
-	rs := d.Evaluator.State.Resource(addr.ContainingResource().Absolute(d.ModulePath))
+	path := addr.ContainingResource().Absolute(d.ModulePath)
+	log.Printf("[DEBUG] Looking up resource by path: %q", path)
+	log.Printf("[DEBUG] Evaluator: %s", pretty.Sprint(d.Evaluator))
+	rs := d.Evaluator.State.Resource(path)
+	log.Printf("[DEBUG] rs: %s", pretty.Sprint(rs))
 
 	if rs == nil {
 		schema := d.getResourceSchema(addr.ContainingResource(), config.ProviderConfigAddr().Absolute(d.ModulePath))
@@ -469,6 +477,7 @@ func (d *evaluationStateData) GetResourceInstance(addr addrs.ResourceInstance, r
 			// If there's an instance key then the user must be intending
 			// single-instance interpretation, and so we can return a
 			// properly-typed unknown value to help with type checking.
+			log.Println("[DEBUG] Returning unknown val due to key mismatch")
 			return cty.UnknownVal(schema.ImpliedType()), diags
 		}
 
@@ -478,6 +487,7 @@ func (d *evaluationStateData) GetResourceInstance(addr addrs.ResourceInstance, r
 		// (In practice we should only end up here during the validate walk,
 		// since later walks should have at least partial states populated
 		// for all resources in the configuration.)
+		log.Println("[DEBUG] Returning dynamic val for another reason")
 		return cty.DynamicVal, diags
 	}
 
@@ -501,6 +511,7 @@ func (d *evaluationStateData) GetResourceInstance(addr addrs.ResourceInstance, r
 				Detail:   fmt.Sprintf("Resource %s does not have either \"count\" or \"for_each\" set, so it cannot be indexed.", addr.ContainingResource()),
 				Subject:  rng.ToHCL().Ptr(),
 			})
+			log.Println("[DEBUG] Returning dynamic val from NoEach")
 			return cty.DynamicVal, diags
 		}
 	case states.EachList:
@@ -512,6 +523,7 @@ func (d *evaluationStateData) GetResourceInstance(addr addrs.ResourceInstance, r
 				Detail:   fmt.Sprintf("Resource %s must be indexed with a number value.", addr.ContainingResource()),
 				Subject:  rng.ToHCL().Ptr(),
 			})
+			log.Println("[DEBUG] Returning dynamic val from EachList")
 			return cty.DynamicVal, diags
 		}
 	case states.EachMap:
@@ -523,16 +535,20 @@ func (d *evaluationStateData) GetResourceInstance(addr addrs.ResourceInstance, r
 				Detail:   fmt.Sprintf("Resource %s must be indexed with a string value.", addr.ContainingResource()),
 				Subject:  rng.ToHCL().Ptr(),
 			})
+			log.Println("[DEBUG] Returning dynamic val from EachMap")
 			return cty.DynamicVal, diags
 		}
 	}
 
 	if !multi {
 		log.Printf("[TRACE] GetResourceInstance: %s is a single instance", addr)
+		log.Printf("[DEBUG] Picking instance from resource state - key: %q", key)
 		is := rs.Instance(key)
 		if is == nil {
+			log.Println("[DEBUG] Returning unknown val from !multi")
 			return cty.UnknownVal(schema.ImpliedType()), diags
 		}
+		log.Println("[DEBUG] Calling getResourceInstanceSingle")
 		return d.getResourceInstanceSingle(addr, rng, is, config, rs.ProviderConfig)
 	}
 
@@ -562,6 +578,9 @@ func (d *evaluationStateData) getResourceInstanceSingle(addr addrs.ResourceInsta
 		return cty.UnknownVal(ty), diags
 	}
 
+	log.Printf("[DEBUG] getResourceInstanceSingle checking current: %s", is.Current.Status)
+
+	// TODO: Shouldn't we hit this branch?
 	if is.Current.Status == states.ObjectPlanned {
 		// If there's a pending change for this instance in our plan, we'll prefer
 		// that. This is important because the state can't represent unknown values
@@ -592,6 +611,9 @@ func (d *evaluationStateData) getResourceInstanceSingle(addr addrs.ResourceInsta
 		}
 	}
 
+	log.Println("[DEBUG] getResourceInstanceSingle attempting to Decode...")
+	log.Printf("[DEBUG] is: %s", pretty.Sprint(is))
+	log.Printf("[DEBUG] impliedType: %s", pretty.Sprint(ty))
 	ios, err := is.Current.Decode(ty)
 	if err != nil {
 		// This shouldn't happen, since by the time we get here
@@ -610,6 +632,10 @@ func (d *evaluationStateData) getResourceInstanceSingle(addr addrs.ResourceInsta
 
 func (d *evaluationStateData) getResourceInstancesAll(addr addrs.Resource, rng tfdiags.SourceRange, config *configs.Resource, rs *states.Resource, providerAddr addrs.AbsProviderConfig) (cty.Value, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
+
+	log.Printf("[DEBUG] Calling getResourceInstancesAll, getResourceSchema")
+	log.Printf("[DEBUG] addr: %s", pretty.Sprint(addr))
+	log.Printf("[DEBUG] providerAddr: %s", pretty.Sprint(providerAddr))
 
 	schema := d.getResourceSchema(addr, providerAddr)
 	if schema == nil {

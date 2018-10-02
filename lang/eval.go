@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/hcl2/hcldec"
 	"github.com/hashicorp/terraform/configs/configschema"
 	"github.com/hashicorp/terraform/tfdiags"
+	"github.com/kr/pretty"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/convert"
 )
@@ -45,15 +46,29 @@ func (s *Scope) ExpandBlock(body hcl.Body, schema *configschema.Block) (hcl.Body
 // If the returned diagnostics contains errors then the result may be
 // incomplete or invalid.
 func (s *Scope) EvalBlock(body hcl.Body, schema *configschema.Block) (cty.Value, tfdiags.Diagnostics) {
+	log.Println("[DEBUG] Calling Scope.EvalBlock")
+	log.Printf("[DEBUG] Getting spec from schema: %s", pretty.Sprint(schema))
 	spec := schema.DecoderSpec()
+	log.Printf("[DEBUG] spec: %s", pretty.Sprint(spec))
 
 	traversals := hcldec.Variables(body, spec)
+	log.Printf("[DEBUG] Scope.EvalBlock - traversals: %s", pretty.Sprint(traversals))
 	refs, diags := References(traversals)
+	if len(diags) > 0 {
+		log.Println("[DEBUG] Scope.EvalBlock - Returning diags from References")
+	}
+	log.Printf("[DEBUG] Scope.EvalBlock - References: %s", pretty.Sprint(refs))
 
 	ctx, ctxDiags := s.EvalContext(refs)
+	if len(ctxDiags) > 0 {
+		log.Println("[DEBUG] Scope.EvalBlock - Returning diags from EvalContext")
+	}
 	diags = diags.Append(ctxDiags)
 
 	val, evalDiags := hcldec.Decode(body, spec, ctx)
+	if len(evalDiags) > 0 {
+		log.Println("[DEBUG] Scope.EvalBlock - Returning diags from hcldec.Decode")
+	}
 	diags = diags.Append(evalDiags)
 
 	return val, diags
@@ -219,7 +234,13 @@ func (s *Scope) evalContext(refs []*addrs.Reference, selfAddr addrs.Referenceabl
 				panic(fmt.Errorf("unsupported ResourceMode %s", subj.Resource.Mode))
 			}
 
-			val, valDiags := normalizeRefValue(s.Data.GetResourceInstance(subj, rng))
+			log.Println("[DEBUG] evalContext: Calling GetResourceInstance")
+			log.Printf("[DEBUG] s.Data: %s", pretty.Sprint(s.Data))
+			log.Printf("[DEBUG] subj: %s", pretty.Sprint(subj))
+			log.Printf("[DEBUG] rng: %s", pretty.Sprint(rng))
+			v, diag := s.Data.GetResourceInstance(subj, rng)
+			log.Printf("[DEBUG] Data source value before normalization: %s", pretty.Sprint(v))
+			val, valDiags := normalizeRefValue(v, diag)
 			diags = diags.Append(valDiags)
 
 			r := subj.Resource

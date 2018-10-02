@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform/tfdiags"
 
 	"github.com/hashicorp/terraform/addrs"
+	"github.com/kr/pretty"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -271,11 +272,16 @@ func (ctx *BuiltinEvalContext) CloseProvisioner(n string) error {
 
 func (ctx *BuiltinEvalContext) EvaluateBlock(body hcl.Body, schema *configschema.Block, self addrs.Referenceable, keyData InstanceKeyEvalData) (cty.Value, hcl.Body, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
+	// log.Printf("[DEBUG] EvaluateBlock context: %s", pretty.Sprint(ctx))
 	scope := ctx.EvaluationScope(self, keyData)
+	log.Printf("[DEBUG] EvaluateBlock scope: %s", pretty.Sprint(scope))
 	body, evalDiags := scope.ExpandBlock(body, schema)
 	diags = diags.Append(evalDiags)
 	val, evalDiags := scope.EvalBlock(body, schema)
-	diags = diags.Append(evalDiags)
+	if len(evalDiags) > 0 {
+		log.Println("[DEBUG] EvaluateBlock returning eval diags from EvalBlock")
+		diags = diags.Append(evalDiags)
+	}
 	return val, body, diags
 }
 
