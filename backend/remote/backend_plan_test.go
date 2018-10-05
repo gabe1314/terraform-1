@@ -14,7 +14,10 @@ import (
 
 func testOperationPlan() *backend.Operation {
 	return &backend.Operation{
-		Type: backend.OperationTypePlan,
+		ModuleDepth: defaultModuleDepth,
+		Parallelism: defaultParallelism,
+		PlanRefresh: true,
+		Type:        backend.OperationTypePlan,
 	}
 }
 
@@ -41,6 +44,56 @@ func TestRemote_planBasic(t *testing.T) {
 	output := b.CLI.(*cli.MockUi).OutputWriter.String()
 	if !strings.Contains(output, "1 to add, 0 to change, 0 to destroy") {
 		t.Fatalf("missing plan summery in output: %s", output)
+	}
+}
+
+func TestRemote_planWithModuleDepth(t *testing.T) {
+	b := testBackendDefault(t)
+
+	mod, modCleanup := module.TestTree(t, "./test-fixtures/plan")
+	defer modCleanup()
+
+	op := testOperationPlan()
+	op.Module = mod
+	op.ModuleDepth = 1
+	op.Workspace = backend.DefaultStateName
+
+	run, err := b.Operation(context.Background(), op)
+	if err != nil {
+		t.Fatalf("error starting operation: %v", err)
+	}
+	<-run.Done()
+
+	if run.Err == nil {
+		t.Fatalf("expected a plan error, got: %v", run.Err)
+	}
+	if !strings.Contains(run.Err.Error(), "module depths are currently not supported") {
+		t.Fatalf("expected a module depth error, got: %v", run.Err)
+	}
+}
+
+func TestRemote_planWithParallelism(t *testing.T) {
+	b := testBackendDefault(t)
+
+	mod, modCleanup := module.TestTree(t, "./test-fixtures/plan")
+	defer modCleanup()
+
+	op := testOperationPlan()
+	op.Module = mod
+	op.Parallelism = 3
+	op.Workspace = backend.DefaultStateName
+
+	run, err := b.Operation(context.Background(), op)
+	if err != nil {
+		t.Fatalf("error starting operation: %v", err)
+	}
+	<-run.Done()
+
+	if run.Err == nil {
+		t.Fatalf("expected a plan error, got: %v", run.Err)
+	}
+	if !strings.Contains(run.Err.Error(), "parallelism values are currently not supported") {
+		t.Fatalf("expected a parallelism error, got: %v", run.Err)
 	}
 }
 
@@ -94,6 +147,31 @@ func TestRemote_planWithPath(t *testing.T) {
 	}
 }
 
+func TestRemote_planWithoutRefresh(t *testing.T) {
+	b := testBackendDefault(t)
+
+	mod, modCleanup := module.TestTree(t, "./test-fixtures/plan")
+	defer modCleanup()
+
+	op := testOperationPlan()
+	op.Module = mod
+	op.PlanRefresh = false
+	op.Workspace = backend.DefaultStateName
+
+	run, err := b.Operation(context.Background(), op)
+	if err != nil {
+		t.Fatalf("error starting operation: %v", err)
+	}
+	<-run.Done()
+
+	if run.Err == nil {
+		t.Fatalf("expected a plan error, got: %v", run.Err)
+	}
+	if !strings.Contains(run.Err.Error(), "refresh is currently not supported") {
+		t.Fatalf("expected a refresh error, got: %v", run.Err)
+	}
+}
+
 func TestRemote_planWithTarget(t *testing.T) {
 	b := testBackendDefault(t)
 
@@ -116,6 +194,31 @@ func TestRemote_planWithTarget(t *testing.T) {
 	}
 	if !strings.Contains(run.Err.Error(), "targeting is currently not supported") {
 		t.Fatalf("expected a targeting error, got: %v", run.Err)
+	}
+}
+
+func TestRemote_planWithVariables(t *testing.T) {
+	b := testBackendDefault(t)
+
+	mod, modCleanup := module.TestTree(t, "./test-fixtures/plan")
+	defer modCleanup()
+
+	op := testOperationPlan()
+	op.Module = mod
+	op.Variables = map[string]interface{}{"foo": "bar"}
+	op.Workspace = backend.DefaultStateName
+
+	run, err := b.Operation(context.Background(), op)
+	if err != nil {
+		t.Fatalf("error starting operation: %v", err)
+	}
+	<-run.Done()
+
+	if run.Err == nil {
+		t.Fatalf("expected an plan error, got: %v", run.Err)
+	}
+	if !strings.Contains(run.Err.Error(), "variables are currently not supported") {
+		t.Fatalf("expected a variables error, got: %v", run.Err)
 	}
 }
 
